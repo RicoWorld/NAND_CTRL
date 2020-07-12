@@ -175,6 +175,7 @@ module MFSM(
   parameter PAGE_ECC_ENCODE_WAIT1 = 12'h101;
   
   parameter PAGE_ECC_DECODE_READ  = 12'h110;
+  parameter PAGE_ECC_DECODE_WAIT1 = 12'h111;
   
   
 
@@ -573,16 +574,16 @@ module MFSM(
 		 if(toggle_done_i && ~ecc_en_o)
 		   next_state <= PAGE_READ_WAITL6; 
 		 else if(toggle_done_i && ecc_en_o)
-		   next_state <= PAGE_ECC_DECODE_WAIT; 
+		   next_state <= PAGE_ECC_DECODE_WAIT1; 
 		 else
 		   next_state <= PAGE_READ_RPAL0;
 	  end 
 	  
 	  
-	  PAGE_ECC_DECODE_WAIT:begin
+	  PAGE_ECC_DECODE_WAIT1:begin
 	    ecc_decode_en_o <= 1'b1;
 	    if(ecc_done_i) next_state <= PAGE_ECC_DECODE_READ;
-		else next_state <= PAGE_ECC_DECODE_WAIT
+		else next_state <= PAGE_ECC_DECODE_WAIT1;
 	  end
 	  
 	  
