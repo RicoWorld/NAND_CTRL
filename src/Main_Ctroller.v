@@ -886,8 +886,10 @@ module MFSM(
 		AMUX_sel_o  <= 3'b011;
 		cmd_code_o  <= 3'b001;
 		toggle_en_o <= 1'b1;
-		if(toggle_done_i)
+		if(toggle_done_i && address_num_i)
 		  next_state <= BLOCK_ERASE_ADDRL2;
+		else if(toggle_done_i && ~address_num_i)
+		  next_state <= BLOCK_ERASE_CMDL2;
 		else
 		  next_state <= BLOCK_ERASE_ADDRL1;
 	  end
