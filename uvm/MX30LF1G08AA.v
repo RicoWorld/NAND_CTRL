@@ -98,7 +98,7 @@ module MX30LF1G08AA  ( CE_B,
                 Trst_p     = 10_000,
                 Trst_e     = 500_000;
     
-    parameter	Tvcs       = 1_000_000;	// Vcc setup time
+    parameter	Tvcs       = 1000;  //edit by lmj for fast sim         //1_000_000;	// Vcc setup time
     parameter	Trcbsy     = 5_000;
  
     parameter	Tcbsy      = 4_000;
@@ -360,7 +360,7 @@ module MX30LF1G08AA  ( CE_B,
     assign #Tcea CE_B_IN = CE_B;
     assign #Tchz CE_B_IN2= CE_B;
     assign #(0, 0) IO[IO_MSB:0]  = OUT_EN&&!CE_B_IN ? Q_Reg[IO_MSB:0] : OUTZ_EN&&!CE_B_IN2 ? 8'hx : 8'hz;
-    assign #(0, 0) RYBY_B        = sr6 ? 1'bz : 1'b0;
+    assign #(0, 0) RYBY_B        = sr6 ? 1'b1 : 1'b0;//edit by lmj //sr6 ? 1'bz : 1'b0;
     
 // *==============================================================================================
 // * FSM state transition

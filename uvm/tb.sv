@@ -7,7 +7,6 @@
 //Main test code.
 //-----------------------------------------------------------
 `include "ahb_test.sv"
-`include "DUT.v"
 
 `timescale 1ns/1ps
 module tb;
@@ -23,7 +22,7 @@ wire CLE;
 wire ALE;
 wire R_nB;
  
- reg[1024*8-1:0] data_page;
+ reg[(2048+64)*8-1:0] data_page[0:64000-1];
  integer random_place;
  //integer num_fault;
  integer h,m;
@@ -56,22 +55,15 @@ wire R_nB;
 	,.ALE       (ALE           )
   );
   
-k9s1208 flash(
-    .IO7        (DIO[7]        )  
-   ,.IO6        (DIO[6]        )   
-   ,.IO5        (DIO[5]        )   
-   ,.IO4        (DIO[4]        )   
-   ,.IO3        (DIO[3]        )   
-   ,.IO2        (DIO[2]        )   
-   ,.IO1        (DIO[1]        )   
-   ,.IO0        (DIO[0]        )   
-   ,.CLE        (CLE           )  
-   ,.ALE        (ALE           )   
-   ,.CENeg      (CE_n          )   
-   ,.RENeg      (RE_n          )   
-   ,.WENeg      (WE_n          )   
-   ,.WPNeg      (1'b1          )  
-   ,.R          (R_nB          )
+MX30LF1G08AA flash(
+    .IO        (DIO           )  
+   ,.CLE       (CLE           )  
+   ,.ALE       (ALE           )   
+   ,.CE_B      (CE_n          )   
+   ,.RE_B      (RE_n          )   
+   ,.WE_B      (WE_n          )   
+   ,.WP_B      (1'b1          )  
+   ,.RYBY_B    (R_nB          )
 );
 
   // clock generation
@@ -93,7 +85,7 @@ k9s1208 flash(
   initial begin 
         rstn <= 1'b1;
   #5    rstn <= 1'b0;
-  #7000 rstn <= 1'b1;
+  #1200 rstn <= 1'b1;
   end
 
   initial begin 
@@ -101,14 +93,15 @@ k9s1208 flash(
     ahb_te.set_interface(nfc_if);    
     ahb_te.run();
   end
-  
+ /* 
   task fault_injection();
     h=0;
 	m=0;
-    foreach(tb.k9s1208_flash.Mem[i])
+    foreach(tb.MX30LF1G08AA_flash.Mem[i])
       begin 
-	    data_page[m] = tb.k9s1208_flash.Mem[i];
-		if(h<2111)
+	    if(h>=960)
+	      data_page[m] = tb.MX30LF1G08AA_flash.Mem[i];
+		if(h<1983)
 		  begin
 		    data_page[m]<<8;
 			h=h+1;
@@ -119,16 +112,12 @@ k9s1208 flash(
 		    h=0;
 		  end		  
       end
-	foreach(data_page[m])
-	repeat(80)
-	  begin 
-	    random_c = {$random}%99;
-		    if(random_c<80)
-			  begin
-			    data_f[j] = ~data_f[j];
-			    num_fault = num_fault+1;
-			  end
-      end
+	foreach(data_page[j])
+	  repeat(80)
+	    begin 
+	      random_place = {$random}%4095;		    
+		  data_page[random_place] = ~data_page[random_place];			  
+        end
   endtask 
-  
+ */ 
 endmodule

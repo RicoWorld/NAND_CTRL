@@ -84,8 +84,6 @@ class NFC_Initiator;
 		`driver.HBURST <= t.HBURST;
 		`driver.HTRANS <= t.HTRANS;
 		`driver.HWDATA <= t.HWDATA; 
-		`driver.tran_valid <= 1;
-		`driver.mon_get <= 0;
 	endtask	
 	
 	

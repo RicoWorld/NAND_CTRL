@@ -16,7 +16,8 @@ class NFC_Generator;
 	mailbox #(NFC_Transaction) sgn_rsp_mb;
 	
 	rand int nBurst = 100;//burst的数量
-	     int times  = 10; //一个read读times个data
+	     int times;       //一个read读times个data
+		 int page_size;   //页的大小
 	     int i = 0;       //计数
 		 int h = 0;       //地址步长
 		 int c = 0;       //cmd list的顺序
@@ -24,8 +25,9 @@ class NFC_Generator;
 	rand logic       transfer_mode;
 	rand logic       page_mode;
 	rand logic       ecc_enable;
+	rand logic       row_length;
 	rand logic[31:0] cmd_list[7:0];
-	     logic[1:0]  status; // status={HRESP , HREADY}
+	     logic[1:0]  status; //status={HRESP , HREADY}
 	     logic[31:0] addr;   //address's parameter
 		 logic[31:0] cmd;
 	     event val,okay,free;
@@ -52,6 +54,7 @@ class NFC_Generator;
 				c=c+1;
 			  end
 			do_finish();
+			$finish;
 		  end
 		  ready();
 		join
@@ -65,7 +68,7 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR  = 32'h00000510;
+	    this.temp.HADDR  = 32'h0000_0810;
 		this.temp.HWDATA = `RESET;
 		JudgeAndDrive();		
 	    this.temp.HSEL   = 1'b1;
@@ -73,17 +76,21 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR  = 32'h00000500;
-		this.temp.HWDATA = 32'h000A000A;
+	    this.temp.HADDR  = 32'h0000_0800;
+		this.temp.HWDATA = 32'h000A_000A;
 		JudgeAndDrive();		
 	    this.temp.HSEL   = 1'b1;
 		this.temp.HWRITE = 1'b1;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR  = 32'h0000050C;
-		this.temp.HWDATA = {29'b0,transfer_mode,page_mode,ecc_enable};
+	    this.temp.HADDR  = 32'h0000_080C;
+		this.temp.HWDATA = {28'b0,row_length,transfer_mode,page_mode,ecc_enable};
 		JudgeAndDrive();
+		if(transfer_mode==1)
+		  page_size = 1024;
+		else
+		  page_size = 512;
 	endtask
 	
 	task send_trans();		
@@ -120,21 +127,25 @@ class NFC_Generator;
 		this.temp.HSIZE = size_test;//方案2 在test例化里面选定SIZE
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-		this.temp.HADDR  = 32'h00000504;//colume address
+		this.temp.HADDR  = 32'h0000_0804;//colume address
 		case(this.temp.HSIZE)
-		    `BYTE:     addr = {$random}%511;
+		    `BYTE:     addr = {$random}%511;//根据size选择页内首地址，这里后面需要根据flash模型而修改
 			`HALFWORD: addr = 2*({$random}%255);
 			`WORD:     addr = 4*({$random}%127);
 			default:$display("GEN:  error temp.HSIZE");
 		endcase
-		addr = 32'h0000_03BF;//页内首地址固定（samsung：32'h0;micron:32'h0000_03BF=959）
+		if(ecc_enable==1)
+		  addr = 32'h0000_0380;//页内首地址固定（samsung：32'h0;micron:32'h0000_037F=895）
+		else
+		  addr = 32'h0000_0400;
 		this.temp.HWDATA = addr;
+		addr = 32'h0;
 		JudgeAndDrive();
-		this.temp.HADDR  = 32'h00000508;//row address
+		this.temp.HADDR  = 32'h0000_0808;//row address
 		//this.temp.HWDATA = {$random}%(32*4096-1);//行地址随机（samsung：<32*4096-1;micron:<64,000）
 		this.temp.HWDATA = 4000;//行地址固定4000
 		JudgeAndDrive();
-		this.temp.HADDR  = 32'h00000510;
+		this.temp.HADDR  = 32'h0000_0810;
 		this.temp.HWDATA = `PAGE_READ;
 		JudgeAndDrive();
 		//config parameter
@@ -148,7 +159,7 @@ class NFC_Generator;
 			`WORD:h=4;
 			default:$display("GEN:  error temp.HSIZE");
 		endcase
-		times=(512-addr)/h;//一个read读times个data（samsung：512;micron:1024）
+		times=(page_size-addr)/h;//一个read读times个data（samsung：512;micron:1024）
 		//start to read
 		for(i=0;i<times;i++)begin
 		    @(val);
@@ -190,10 +201,10 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR  = 32'h00000508;
+	    this.temp.HADDR  = 32'h00000808;
 		this.temp.HWDATA = 4000;//固定快擦除的行地址
 		JudgeAndDrive();
-	    this.temp.HADDR  = 32'h00000510;
+	    this.temp.HADDR  = 32'h00000810;
 		this.temp.HWDATA = `BLOCK_ERASE;
 		JudgeAndDrive();
 	endtask
@@ -206,10 +217,10 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR = 32'h00000510;
+	    this.temp.HADDR = 32'h00000810;
 		this.temp.HWDATA=`READ_STATE;
 		JudgeAndDrive();
-	    this.temp.HADDR = 32'h0000051C;
+	    this.temp.HADDR = 32'h0000081C;
 		this.temp.HWDATA= 32'h00000000;
 		JudgeAndDrive();
 	endtask
@@ -224,21 +235,25 @@ class NFC_Generator;
 		this.temp.HSIZE = size_test;//方案2 在test例化里面选定SIZE
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-		this.temp.HADDR  = 32'h00000504;//colume address
+		this.temp.HADDR  = 32'h00000804;//colume address
 		case(this.temp.HSIZE)
 		    `BYTE:     addr = {$random}%511;
 			`HALFWORD: addr = 2*({$random}%255);
 			`WORD:     addr = 4*({$random}%127);
 			default:$display("GEN:  error temp.HSIZE");
 		endcase
-		addr = 32'h0000_03BF;//页内首地址固定
+		if(ecc_enable==1)
+		  addr = 32'h0000_0380;//页内首地址固定（samsung：32'h0;micron:32'h0000_037F=895）
+		else
+		  addr = 32'h0000_0400;
 		this.temp.HWDATA = addr;
+		addr = 32'h0;
 		JudgeAndDrive();
-		this.temp.HADDR  = 32'h00000508;//row address
+		this.temp.HADDR  = 32'h00000808;//row address
 		//this.temp.HWDATA = {$random}%(32*4096-1);//行地址随机
 		this.temp.HWDATA = 4000;//行地址固定
 		JudgeAndDrive();
-		this.temp.HADDR  = 32'h00000510;
+		this.temp.HADDR  = 32'h00000810;
 		this.temp.HWDATA = `PROGRAM_PAGE;
 		JudgeAndDrive();
 		//config parameter
@@ -250,8 +265,8 @@ class NFC_Generator;
 			`HALFWORD:h=2;
 			`WORD:h=4;
 			default:$display("GEN:  error temp.HSIZE");
-		endcase
-		times=(1024-addr)/h;//一个write写times个data
+		endcase		
+		times=(page_size-addr)/h;//一个write写times个data
 		//start to read
 		for(i=0;i<times;i++)begin
 		    @(val);
@@ -307,10 +322,10 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR=32'h00000510;
+	    this.temp.HADDR=32'h00000810;
 		this.temp.HWDATA=`READ_ID;
 		JudgeAndDrive();
-	    this.temp.HADDR=32'h00000514;
+	    this.temp.HADDR=32'h00000814;
 		this.temp.HWDATA= 32'h00000000;
 		JudgeAndDrive();
 	endtask
@@ -323,7 +338,7 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR=32'h00000510;
+	    this.temp.HADDR=32'h00000810;
 		this.temp.HWDATA=`RESET;
 		JudgeAndDrive();
 	endtask
@@ -335,7 +350,7 @@ class NFC_Generator;
 		this.temp.HSIZE  = `WORD;
 		this.temp.HBURST = `SINGLE;
 		this.temp.HTRANS = `NONSEQ;
-	    this.temp.HADDR  = 32'h00000520;
+	    this.temp.HADDR  = 32'h00000820;
 		this.temp.HWDATA = 32'h00000000;
 		JudgeAndDrive();
 		@(free);
