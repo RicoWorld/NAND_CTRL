@@ -20,8 +20,9 @@ module Timing_ctrl(
    rstn,
    start,
    cmd_code_i,
-   ecc_en_o,
-   ecc_done_i
+   ecc_ready_i,
+   ecc_en_i,
+   ecc_done_i,
    ecc_wr_o,
    ecc_rd_o,
    Done, 
@@ -60,7 +61,7 @@ module Timing_ctrl(
   input  ecc_ready_i;
   input  ecc_done_i;
   
-  output reg ecc_en_o;
+  input   ecc_en_i;
   
   output reg ecc_rd_o;
   output reg ecc_wr_o;
@@ -153,6 +154,8 @@ module Timing_ctrl(
   parameter READ_1PAGE_WAITL0=8'd19;
   parameter READ_1PAGE_WAITL1=8'd21;
   parameter READ_ECC_DECODE   = 8'd23;
+  parameter READ_ECC_DECODE_START = 8'd31;
+  parameter ECC_DECODE_END  = 8'd32;
   parameter ECC_DECODE_DONE    = 8'd22;
   parameter WRITE_1PAGE_START =8'd24;
   parameter WRITE_1PAGE_SET   = 8'd25;
@@ -270,13 +273,6 @@ module Timing_ctrl(
 		   endcase
 		  end
 		   
-//		  S_CLE:begin
-//		    CE_n <= 1'b0;
-//			WE_n <= 1'b0;
-//			CLE  <= 1'b1;
-//			DOS  <= 1'b1;
-//			next_state <= CMD_SET;		
-//		  end
          
          WRITE_ECC_ENCODE:begin
            if(~empty_i & ecc_ready_i)
@@ -288,10 +284,9 @@ module Timing_ctrl(
 	         begin
 	           rd_fifo_o <= 1'b0;
                ecc_wr_o  <= rd_fifo_r;
-		     end
-			 
+		     end 
 	       if(ecc_done_i) next_state <= ECC_ENCODE_DONE;
-	       else next_state         <= WRITE_ECC_ENCODE;
+	       else next_state  <= WRITE_ECC_ENCODE;
           end
 		
 		 ECC_ENCODE_DONE:begin
@@ -459,7 +454,7 @@ module Timing_ctrl(
 		   CE_n <= 1'b0;
 		   WE_n <= 1'b1;
 		   DOS  <= 1'b1;
-		     if(~ecc_en_o)begin
+		   if(~ecc_en_i)begin
                if(acnt_i[1:0]==2'b00 & ~empty_i)
                  begin
 		           rd_fifo_o <= 1'b1;
@@ -474,20 +469,20 @@ module Timing_ctrl(
 		           rd_fifo_o <= 1'b0;
 		           next_state <= WRITE_1PAGE_SET;
 			     end
-			  end
-			  else begin
-			    if(acnt_i[1:0]==2'b00)
-				  begin
+			end			
+			else begin
+			  if(acnt_i[1:0]==2'b00)
+				begin
 				    ecc_rd_o <= 1'b1;
 				    next_state <= WRITE_1PAGE_SET;
-				  end
-				else
-				  begin
+				end
+			  else
+				begin
 				    ecc_rd_o <= 1'b0;
 				    next_state <= WRITE_1PAGE_SET;
-				  end
-			  end
-		   end
+				end
+			end
+		  end
 		 
 		 WRITE_1PAGE_SET:begin   //25
 		   CE_n <= 1'b0;
@@ -573,7 +568,7 @@ module Timing_ctrl(
 		     next_state <= READ_1PAGE_WAITL1;
 		   else
 		     next_state <= READ_1PAGE_WAITL0;
-		   if(~ecc_en_o) 
+		   if(~ecc_en_i) 
 		     begin
 		       if(acnt_i[1:0]==2'b11 & ~ full_i)
 		         we_fifo_o <= 1'b1;

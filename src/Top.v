@@ -92,9 +92,10 @@ module Top(
   wire [ 2:0]  cmd_code_w        ; //TFSM command
   wire [ 7:0]  cmd_reg_w         ; //TFSM command register
   
-  wire         ecc_we_w          ; //ecc write enable
-  wire         ecc_re_w          ; //ecc read enbale
-  wire         ecc_en_w          ; //ecc address enable
+  wire         ecc_rd_w          ; //ecc read enable
+  reg          ecc_rd_r          ; //ecc read enable
+  wire         ecc_wr_w          ; //ecc write enbale
+  wire         ecc_en_w          ; //ecc enable
   wire         radr_en_w         ; //row address enable
   wire         cadr_en_w         ; //colume address enable
   wire         wCnt_rst_w        ; //wait time counter reset
@@ -137,20 +138,23 @@ module Top(
   
   wire         wr_rst_busy_w     ;
   wire         rd_rst_busy_w     ;
-  wire         APhase_HADDR      ;
+  wire [31:0]  APhase_HADDR      ;
+  wire         srst              ; // soft reset fifo after program or read page
   
 //ecc
 
   wire [31:0]  ecc_dataout_w;
-  
+  reg  [31:0]  ecc_datain_w;
   wire         ecc_on_w;
 
 //top
+
+  reg          rstn_r,rstn_rr;
   reg  [31:0]  FlashDataIn_r;
   wire [ 7:0]  FlashDataIn;
                
   wire [15:0]  colume_addr_w;
-  wire [15:0]  ecc_addr_w;
+//  wire [15:0]  ecc_addr_w;
                
   wire [15:0]  settime_w;
   wire [15:0]  holdtime_w;
@@ -161,6 +165,7 @@ module Top(
   wire         done_w;
   wire         page_width_w;
   wire         interface_w;
+  wire         address_num_w;
   wire         start;
 
   wire         CE_n_M,CE_n_T;
@@ -197,6 +202,8 @@ module Top(
   assign rstn = rstn_rr; //	
 	
 	
+  assign srst = ( MFSM_state_w == 12'h075 || MFSM_state_w == 12'h051 ) ? 1'b1:1'b0;
+	
   AHB_SALVE slave_ctrl(
     .ACLK              (ACLK           ),
     .HCLK              (HCLK           ),
@@ -227,8 +234,10 @@ module Top(
     .holdtime_o        (holdtime_w     ),
     .done_i            (done_w         ),
     .ecc_en_o          (ecc_on_w       ),
+	.decode_result_i   (decode_result_w),
     .page_width_o      (page_width_w   ),
     .interface_o       (interface_w    ),
+	.address_num_o     (address_num_w  ),
     .empty_i           (empty_w        ),
     .full_i            (full_w         ),
     .start             (start          ),
@@ -258,6 +267,7 @@ module Top(
     .ecc_on_i          (ecc_on_w       ),
     .interface_i       (interface_w    ),
     .page_width_i      (page_width_w   ),
+	.address_num_i     (address_num_w  ),
     .ecc_en_o          (ecc_en_w       ),
 	.ecc_decode_en_o   (ecc_decode_en_w),
 	.ecc_encode_en_o   (ecc_encode_en_w),
@@ -298,8 +308,9 @@ module Top(
     .rd_fifo_o         (frd_en_w       ),
 	.ecc_ready_i       (ecc_ready_w    ),
 	.ecc_done_i        (ecc_done_w     ),
-    .ecc_wr_o,         (ecc_wr_w       ),
-    .ecc_rd_o,	       (ecc_rd_w       ),
+    .ecc_wr_o          (ecc_wr_w       ),
+    .ecc_rd_o	       (ecc_rd_w       ),
+	.ecc_en_i          (ecc_en_w       ),
     .Done              (toggle_done_w  ),
     .BF_o              (BF_w           )
   );
@@ -316,31 +327,31 @@ assign bf_we_w     = Flash_BF_we ;
 assign Flash_BF_we = DIS & BF_w;
 
 
-  LPDC_ECC ECC_gen_loc(
-    .clk                (ACLK           ),
-	.rstn               (rstn           ),
-    .wr                 (ecc_wr_w       ),
-    .rd                 (ecc_rd_w       ),
-    .ecc_en_i           (ecc_en_w       ),
-    .data_i             (ecc_datain_w   ),      
-    .data_o             (ecc_dataout_w  ),       
-    .ecc_ready_o        (ecc_ready_w    ),        //ECC to AHB
-    .ecc_done_o         (ecc_done_w     ),
-    .ecc_decode_en_i    (ecc_decode_en_w),
-	.ecc_encode_en_i    (ecc_encode_en_w)
+  ecc_top LDPC_ECC_dut(
+    .clk               (ACLK           ),
+	.rst_n             (rstn           ),
+    .wr_en             (ecc_wr_w       ),
+    .rd_en             (ecc_rd_w       ),
+    .data_in           (ecc_datain_w   ),      
+    .data_out          (ecc_dataout_w  ),       
+    .ecc_rdy           (ecc_ready_w    ),        //ECC to AHB
+    .ecc_over          (ecc_done_w     ),
+    .ecc_decode_req    (ecc_decode_en_w),
+	.ecc_code_req      (ecc_encode_en_w),
+	.decode_result     (decode_result_w)
   );
 
 always@(*)
   begin
     if(ecc_encode_en_w)  ecc_datain_w <= dout_w;
     else if (ecc_decode_en_w) ecc_datain_w <= FlashDataIn_r;
-	else ecc_datain_w<=32'b0;
+	else ecc_datain_w <=32'b0;
   end
   
 
 
 fifo_generator_0 AHB2FLASH_FIFO (
-  .rst                  (~rstn         ),     //done_w     // input wire rst
+  .rst                  (~rstn | srst  ),     //done_w     // input wire rst
   .wr_clk               (wr_clk        ),            // input wire wr_clk
   .rd_clk               (rd_clk        ),            // input wire rd_clk
   .din                  (din_w         ),                  // input wire [31 : 0] din
@@ -359,7 +370,7 @@ fifo_generator_0 AHB2FLASH_FIFO (
     begin
 	  if(~flash_write_w & ~flash_read_w)
 	    wr_en_w <= 1'b0;
-	  else if(flash_write_w & ~flash_read_w & ~full_w & APhase_HADDR <=12'h1ff & HREADYOUT)
+	  else if(flash_write_w & ~flash_read_w & ~full_w & (APhase_HADDR <=data_field_r) & HREADYOUT)
 	    wr_en_w <= APhase_HWRITE;
 	  else if(~flash_write_w & flash_read_w )
 	    wr_en_w <= fwr_en_w;
@@ -371,7 +382,7 @@ fifo_generator_0 AHB2FLASH_FIFO (
     begin
 	 if((~flash_write_w) & ~flash_read_w)
 	   rd_en_w <= 1'b0;
-	 else if(~flash_write_w & flash_read_w & ~empty_w & APhase_HADDR <=12'h1ff )
+	 else if(~flash_write_w & flash_read_w & ~empty_w & (APhase_HADDR <=data_field_r) )
 	   rd_en_w <= ~APhase_HWRITE;
 	 else if(flash_write_w & ~flash_read_w )
 	   rd_en_w <= frd_en_w;
@@ -393,12 +404,7 @@ fifo_generator_0 AHB2FLASH_FIFO (
 	
   always@(*)  //clk gate
     begin
-	  if(~rstn)
-	    begin
-		  wr_clk <= HCLK;
-		  rd_clk <= HCLK;
-		end
-	  else if(flash_write_w & ~flash_read_w)
+      if(flash_write_w & ~flash_read_w)
 	    begin
 		  wr_clk <= HCLK;
 		  rd_clk <= ACLK ;
@@ -442,13 +448,22 @@ fifo_generator_0 AHB2FLASH_FIFO (
 //
 // fifo data for write flash 
 //
+
+  always @(posedge ACLK)
+    begin
+	  if(~rstn)
+	    ecc_rd_r <= 1'b0;
+	  else
+	    ecc_rd_r <= ecc_rd_w;
+	end
+	
   always @(posedge ACLK)  
     begin
 	  if(~rstn)
 	    ahb2flash_r <=0;
 	  else if(rd_en_w && ~ecc_on_w)
 	    ahb2flash_r <= dout_w ;
-	  else if(ecc_rd_w && ecc_on_w)
+	  else if(ecc_rd_r && ecc_on_w)
 	    ahb2flash_r <= ecc_dataout_w;
 	end
 
@@ -459,7 +474,6 @@ fifo_generator_0 AHB2FLASH_FIFO (
 
   assign arst_w =( (~rstn) | acnt_rst_w); 
   assign colume_addr_w={Page_addr_w[1],Page_addr_w[0]};
-  assign ecc_addr_w  = data_field_r+ (colume_addr_w >> 2);
   
   always @(*)
     begin
@@ -471,14 +485,14 @@ fifo_generator_0 AHB2FLASH_FIFO (
 	  else 
         begin
 		  data_field_r  <= 12'h7ff; 
-		  spare_field_r <= 12'h83f;
+		  spare_field_r <= 12'h7ff; // no use spare filed
 		end
 	end
 
   assign data_field_w = ecc_on_w ? spare_field_r:data_field_r;
   assign TC_data_w = (acnt_r == data_field_r)?1'b1:1'b0; //2048/512 byte data 
-  assign TC_ecc_w  = (acnt_r == spare_field_r)?1'b1:1'b0; //64/16   byte ecc
-  assign TC_w      = (ecc_en_w)?(TC_ecc_w):(TC__w);
+  assign TC_ecc_w  = (acnt_r == spare_field_r)?1'b1:1'b0; //add 64/16   byte ecc
+  assign TC_w      = (ecc_en_w)?(TC_ecc_w):(TC_data_w);
 //  assign fifo_en_w = (fifo_delay_w &(acnt_r > 12'h007)) ?1'b1:1'b0; //wait 6 byte data ,ecc data ready
   always @(posedge ACLK)
     begin
@@ -486,8 +500,6 @@ fifo_generator_0 AHB2FLASH_FIFO (
 	    acnt_r <= 0;
 	  else if(cadr_en_w)
 	    acnt_r <= {Page_addr_w[1],Page_addr_w[0]};
-	  else if(ecc_en_w)
-	    acnt_r <= ecc_addr_w;
 	  else if(acnt_en_w)
 	    acnt_r <= acnt_r + 1'b1;
 	end
@@ -556,8 +568,8 @@ fifo_generator_0 AHB2FLASH_FIFO (
   always@(*)
    begin
     case (AMUX_sel_w)
-	   3'b110 : addr_data_r <= ecc_addr_w[15:0];
-	   3'b101 : addr_data_r <= ecc_addr_w[ 7:0];
+//	   3'b110 : addr_data_r <= ecc_addr_w[15:0];
+//	   3'b101 : addr_data_r <= ecc_addr_w[ 7:0];
 	   3'b100 : addr_data_r <= radr3_r;
        3'b011 : addr_data_r <= radr2_r;
        3'b010 : addr_data_r <= radr1_r;

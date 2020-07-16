@@ -13,18 +13,19 @@
 ////////////////////////////////////////////////
 // ------------------------------------------------------------------------------------------
 // |主机寻址范围      |说明
-// |0x0000——0x03FF    |BUFFER1 数据位宽32，总大小1024 byte
-// |0x0500            |存储器时序参数寄存器，高16bit建立时间有关，低16bit保持时间
-// |0x0504            |页内地址，colume address
-// |0x0508            |块地址，row address
-// |0x050C            |第0位表示ecc使能信号，1'b1:ON  ; 1’b0:off
-//                    |第1位选择大小页模式， 1'b1:大页; 1'b0:小页
+// |0x0000——0x07FF    |BUFFER1 数据位宽32，总大小1024 byte
+// |0x0800            |存储器时序参数寄存器，高16bit建立时间有关，低16bit保持时间
+// |0x0804            |页内地址，colume address
+// |0x0808            |块地址，row address
+// |0x080C            |第0位表示ecc使能信号，1'b1:ON  ; 1’b0:off
+//                    |第1位选择大小页模式， 1'b1:大页; 1'b0:小页    //大页：2byte Colume address ；小页：1byte colume address
 //                    |第2位选择协议模式,    1'b1:ONFI; 1'b0:toggle
-// |0x0510            |控制器命令寄存器
-// |0x0514            |ID REGISTER 1
-// |0x0518            |ID REGISTER 2
-// |0x051C            |存储器状态寄存器，用于读取存储器状态
-// |0x0520            |主控逻辑状态寄存器，用于读取存储器状态
+//                    |第3位选择ROW地址长度  1'b1:3byte 1'b0:2byte   //地址长度为Row地址总共需要的字节数
+// |0x0810            |控制器命令寄存器
+// |0x0814            |ID REGISTER 1
+// |0x0818            |ID REGISTER 2
+// |0x081C            |存储器状态寄存器，用于读取存储器状态
+// |0x0820            |主控逻辑状态寄存器，用于读取存储器状态
 
 
 /////////////////////////////////////////////////////////////////////
@@ -72,20 +73,23 @@ module AHB_SALVE(
 	input       [11:0] MFSM_state,
 	input              done_i,
 	input       [31:0] flash2ahb_i,
+	
+	input              decode_result_i,
 
 
 
-	output      [7:0]  Block_addr1_o,
-	output      [7:0]  Block_addr2_o,
-	output      [7:0]  Block_addr3_o,
-	output      [7:0]  Page_addr1_o,
-	output      [7:0]  Page_addr2_o,
+	output      [7 :0] Block_addr1_o,
+	output      [7 :0] Block_addr2_o,
+	output      [7 :0] Block_addr3_o,
+	output      [7 :0] Page_addr1_o,
+	output      [7 :0] Page_addr2_o,
 
 	output      [15:0] settime_o,
 	output      [15:0] holdtime_o,
 	output             ecc_en_o,
 	output             page_width_o,
 	output             interface_o,
+	output             address_num_o,
 	
 	output             start,
 		
@@ -150,8 +154,10 @@ module AHB_SALVE(
 		  .settime_o(settime_o),
 		  .holdtime_o(holdtime_o),
 		  .ecc_en_o(ecc_en_o),
+		  .decode_result_i(decode_result_i),
 		  .page_width_o(page_width_o),
 		  .interface_o(interface_o),
+		  .address_num_o(address_num_o),
 		  .done_i(done_i),
 		  .done_o(done_o)
   );    
@@ -206,8 +212,8 @@ module AHB_SALVE(
 	    HREADYOUT_r <= 1'b0;		
 	end
 
-  assign HREADYOUT = HREADYOUT_r & (~ahb_wait);
-
+ // assign HREADYOUT = HREADYOUT_r ;
+  assign HREADYOUT = (flash_write_rr)?(HREADYOUT_r & (~full_i)):HREADYOUT_r; //consider fifo full
 
 
 	

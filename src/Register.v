@@ -13,20 +13,21 @@ module Register(
    input                byte3_i,
    input        [31:0]  hdata_i,
    input        [31:0]  haddr,
-   output wire   [31:0]  hdata_o,
+   output wire  [31:0]  hdata_o,
    output wire          start_o,
    output wire          start_ahb_o,
 
    
    input        [11:0]  MFSM_state_i,
    input                done_i,
-
+   input                decode_result_i,
 
    input                fwe,
    input        [11:0]  faddr,
    input                frd,
    input        [ 7:0]  fdata_i,
    output       [ 7:0]  fdata_o,
+
 
 
    
@@ -40,9 +41,10 @@ module Register(
    output wire  [15:0]  settime_o,
    output wire  [15:0]  holdtime_o,
 
-   output wire  [15:0]  ecc_en_o,
+   output wire          ecc_en_o,
    output wire          page_width_o,
    output wire          interface_o,
+   output wire          address_num_o,
    
    output wire          done_o
 );
@@ -67,7 +69,7 @@ module Register(
 
 //for host
 //R-Register
-  reg [ 7:0]  ID_r[0:5]           ;
+  reg [ 7:0]  ID_r[0:5]      ;
   reg [31:0]  FLASH_state_r  ;
 
 
@@ -81,7 +83,7 @@ module Register(
     begin
       if(~rstn)
 	    ID_r[0] <= 8'h00;
-	  else if(fwe && faddr == 12'h500) 
+	  else if(fwe && faddr == 12'h800) 
 	    ID_r[0] <= fdata_i;
 	end
 	
@@ -89,7 +91,7 @@ module Register(
     begin
       if(~rstn)
 	    ID_r[1] <= 8'h00;
-	  else if(fwe && faddr == 12'h501) 
+	  else if(fwe && faddr == 12'h801) 
 	    ID_r[1] <= fdata_i;
 	end
 	
@@ -97,7 +99,7 @@ module Register(
     begin
       if(~rstn)
 	    ID_r[2] <= 8'h00;
-	  else if(fwe && faddr == 12'h502) 
+	  else if(fwe && faddr == 12'h802) 
 	    ID_r[2] <= fdata_i;
 	end
 	
@@ -105,7 +107,7 @@ module Register(
     begin
       if(~rstn)
 	    ID_r[3] <= 8'h00;
-	  else if(fwe && faddr == 12'h503) 
+	  else if(fwe && faddr == 12'h803) 
 	    ID_r[3] <= fdata_i;
 	end
 	
@@ -113,7 +115,7 @@ module Register(
     begin
       if(~rstn)
 	    ID_r[4] <= 8'h00;
-	  else if(fwe && faddr == 12'h504) 
+	  else if(fwe && faddr == 12'h804) 
 	    ID_r[4] <= fdata_i;
 	end
 	
@@ -121,7 +123,7 @@ module Register(
     begin
       if(~rstn)
 	    ID_r[5] <= 8'h00;
-	  else if(fwe && faddr == 12'h505) 
+	  else if(fwe && faddr == 12'h805) 
 	    ID_r[5] <= fdata_i;
 	end
 	
@@ -130,7 +132,7 @@ module Register(
     begin
 	  if(~rstn)
 	    FLASH_state_r <= 8'h00;
-	  else if(fwe && faddr == 12'h506)
+	  else if(fwe && faddr == 12'h806)
 	    FLASH_state_r <= fdata_i;
 	end
 	
@@ -145,39 +147,39 @@ module Register(
   always @(*)
     begin
 	  case(haddr)
-	  12'h500:begin
+	  12'h800:begin
           haddr_r <= 4'd0;
 	      wen_r   <= 1'b1;
 	    end
-	  12'h504:begin
+	  12'h804:begin
 	      haddr_r <= 4'd1;
 	      wen_r   <= 1'b1;
 	    end
-	  12'h508:begin
+	  12'h808:begin
 	      haddr_r <= 4'd2;
 	      wen_r   <= 1'b1;
 	    end
-	  12'h50C:begin
+	  12'h80C:begin
 	      haddr_r <= 4'd3;
 	      wen_r   <= 1'b1;
 	    end    
-	  12'h510:begin
+	  12'h810:begin
 	      haddr_r <= 4'd4;
 	      wen_r   <= 1'b1;
 	    end
-      12'h514:begin
+      12'h814:begin
 	      haddr_r <= 4'd5;
 	      wen_r   <= 1'b0;
 	    end
-	  12'h518:begin
+	  12'h818:begin
 	      haddr_r <= 4'd6;
 	      wen_r   <= 1'b0;
 	    end
-	  12'h51C:begin
+	  12'h81C:begin
 	      haddr_r <= 4'd7;
 	      wen_r   <= 1'b0;
 	    end
-	  12'h520:begin
+	  12'h820:begin
 	      haddr_r <= 4'd8;
 	      wen_r   <= 1'b0;
 	    end
@@ -207,7 +209,7 @@ module Register(
 	      memory[5]<={ID_r[3],ID_r[2],ID_r[1],ID_r[0]};
 	      memory[6]<={16'b0,ID_r[5],ID_r[4]};
 	      memory[7]<={24'b0,FLASH_state_r};
-	      memory[8]<={20'b0,MFSM_state_i};
+	      memory[8]<={15'b0,decode_result_i,4'b0,MFSM_state_i};
 	    if(hsel & hwe & htrans[1] & hready & wen_r)
 	      begin
 		    if(byte0_i)
@@ -330,5 +332,6 @@ assign hdata_o = memory[haddr_r];
  assign ecc_en_o      = memory[3][0];
  assign page_width_o  = memory[3][1];
  assign interface_o   = memory[3][2];
+ assign address_num_o = memory[3][3];
 	
 endmodule
