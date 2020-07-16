@@ -9,6 +9,7 @@ module MFSM(
   input [15:0] command_i,  //read id addres 00 or 90
   input        ecc_on_i,
   input        interface_i,
+  input        address_num_i,
   input        page_width_i,
   
   input [31:0] fifo_rdata_cnt_i,
@@ -183,7 +184,6 @@ module MFSM(
   
    reg [11:0] current_state,next_state;
    reg [15:0] command_r;
-   reg        ecc_done_r;
   
   //output 
   assign MFSM_state_o = current_state;  
@@ -206,17 +206,7 @@ module MFSM(
   	  else
   	    current_state <= next_state;
     end
-  
-  always @(posedge clk)
-    begin
-	  if(~rstn)
-	    ecc_done_r <= 1'b0;
-	  else if((current_state == PAGE_READ_ECCDONE) & ecc_on_i)
-	    ecc_done_r <= 1'b1;
-	  else if(current_state == IDLE)
-	    ecc_done_r <= 1'b0;
-	end
-	    
+  	    
   
   
   
@@ -235,8 +225,8 @@ module MFSM(
 	  cadr_en_o       <= 1'b0   ;
 	  radr_en_o       <= 1'b0   ;
 	  CE_n            <= 1'b1   ;
-	  ecc_we_o        <= 1'b0   ;
-	  ecc_re_o        <= 1'b0   ;
+//	  ecc_we_o        <= 1'b0   ;
+//	  ecc_re_o        <= 1'b0   ;
 	  ecc_en_o        <= 1'b0   ;
 	  flash_write_o   <= 1'b0   ;
 	  flash_read_o    <= 1'b0   ;
@@ -261,7 +251,6 @@ module MFSM(
   		16'h90xx:next_state <= READ_ID_CMDL0     ;
 		16'h60D0:next_state <= BLOCK_ERASE_CMDL0 ;
 		16'h0030:next_state <= PAGE_READ_CMDL0   ;
-		end
   		16'hFF00:next_state <= RESET_CMDL0       ;
 		default :next_state <= IDLE              ;
   		endcase
@@ -276,11 +265,17 @@ module MFSM(
 		flash_write_o   <= 1'b1;
 		toggle_en_o     <= 1'b1;
 	    if(toggle_done_i)
-		  next_state <= PAGE_ECC_ENCODE_WRITE;
-		else
 		  next_state <= PAGE_PROGRAM_CMDL0;
+		else
+		  next_state <= PAGE_ECC_ENCODE_WRITE;
 	  end
-	  end
+	  
+//	  PAGE_ECC_ENCODE_WAIT1:begin
+//	    if(ecc_done_i) next_state <= PAGE_PROGRAM_CMDL0;
+//		else next_state <= PAGE_ECC_ENCODE_WAIT1;
+//	  end
+	  
+	  
 	  PAGE_PROGRAM_CMDL0:begin
 	    cmd_o      <= 8'h80;
 		radr_en_o  <= 1'b1 ;
@@ -297,7 +292,7 @@ module MFSM(
 		if(toggle_done_i)
 		  next_state <= PAGE_PROGRAM_ADDRL0;
 		else
-		  next_state <= PAGE_PROGRAM_CMDL1  ;
+		  next_state <= PAGE_PROGRAM_CMDL1 ;
 	  end
 	  
 	  PAGE_PROGRAM_ADDRL0:begin
@@ -342,8 +337,10 @@ module MFSM(
 		cmd_code_o  <= 3'b001;
 		CAD_sel_o   <= 2'b10 ;
 		AMUX_sel_o  <= 3'b011; //-- row address 2
-        if(toggle_done_i)
+        if(toggle_done_i & address_num_i)
 		  next_state <= PAGE_PROGRAM_ADDRL4;
+		else if(toggle_done_i & ~address_num_i)
+		  next_state <= PAGE_PROGRAM_WAITL0;
 		else
 		  next_state <= PAGE_PROGRAM_ADDRL3;
 	  end
@@ -360,15 +357,17 @@ module MFSM(
 	  end
 	  
 	  PAGE_PROGRAM_WAITL0:begin
-//	    acnt_rst_o <= 1'b1;
+	    acnt_rst_o <= 1'b1;
 		wCnt_rst_o <= 1'b1;
 		next_state <= PAGE_PROGRAM_WAITL1;
 	  end
 	  
 	  PAGE_PROGRAM_WAITL1:begin
 	    wCnt_en_o  <= 1'b1;
-		if(tCLR_i)
-		  next_state <= PAGE_PROGRAM_WAITL2;
+		if(tCLR_i) begin
+			cadr_en_o  <= 1'b1;
+		    next_state <= PAGE_PROGRAM_WAITL2;
+		  end
 		else
 		  next_state <= PAGE_PROGRAM_WAITL1;
 	  end
@@ -383,15 +382,18 @@ module MFSM(
 	  PAGE_PROGRAM_WPAL0:begin
 	     toggle_en_o    <= 1'b1;
 		 cmd_code_o     <= 3'b111 ;  //--data write one page , colume start address ---- address[2047]
-		 if(ecc_en_o)begin
-		   CAD_sel_w      <= 2'b01  ;  // ECC data to flash
+		 if(ecc_on_i)begin
+		   //CAD_sel_o      <= 2'b01  ;  // ECC data to flash
+		   CAD_sel_o      <= 2'b00  ;  // ECC data to flash
 		   flash_read_o   <= 1'b0   ; 
-           flash_write_o  <= 1'b0   ;		 
+           flash_write_o  <= 1'b0   ;
+           ecc_en_o		  <= 1'b1   ;
 		 end
 		 else begin
 		   CAD_sel_o      <= 2'b00  ;  // AHB data to flash
 		   flash_read_o   <= 1'b0   ; 
-           flash_write_o  <= 1'b1   ;		 
+           flash_write_o  <= 1'b1   ;
+           ecc_en_o		  <= 1'b0   ;
 		 end
 		 if(toggle_done_i)
 		   next_state <= PAGE_PROGRAM_CMDL5;
@@ -449,7 +451,7 @@ module MFSM(
 	    toggle_en_o <= 1'b1   ;  
 		cmd_code_o  <= 3'b000 ;  
 		CAD_sel_o   <= 2'b11  ;  
-		if(toggle_done_i) begin
+		if(toggle_done_i)
 		  next_state <= PAGE_READ_ADDRL0; //DATA filed address
 		else
 		  next_state <= PAGE_READ_CMDL1;
@@ -463,7 +465,7 @@ module MFSM(
 	    AMUX_sel_o  <= 3'b000 ;
 	    ecc_en_o    <= 1'b0   ;
 	    if(toggle_done_i & page_width_i)
-	      next_state <= PAGE_READ_DDRL1;
+	      next_state <= PAGE_READ_ADDRL1;
 	    else if (toggle_done_i & (~page_width_i))
 	      next_state <= PAGE_READ_ADDRL2;
 	    else
@@ -474,7 +476,7 @@ module MFSM(
 	    toggle_en_o <= 1'b1   ;
 	    cmd_code_o  <= 3'b001 ;
 	    CAD_sel_o   <= 2'b10  ;
-	    AMUX_sel_o  <= 3'b000 ;
+	    AMUX_sel_o  <= 3'b001 ;
 	    ecc_en_o    <= 1'b0   ;
 	    if(toggle_done_i)
 	      next_state <= PAGE_READ_ADDRL2;
@@ -498,9 +500,13 @@ module MFSM(
 		cmd_code_o  <= 3'b001;
 		CAD_sel_o   <= 2'b10;
 		AMUX_sel_o  <= 3'b011;
-		if(toggle_done_i)
+		if(toggle_done_i & address_num_i)
 		  next_state <= PAGE_READ_ADDRL4;
-		else
+		else if (toggle_done_i & ~address_num_i & interface_i)
+		  next_state <= PAGE_READ_CMDL2;
+		else if (toggle_done_i & ~address_num_i & ~interface_i)
+		  next_state <= PAGE_READ_WAITL0;
+		else 
 		  next_state <= PAGE_READ_ADDRL3;
 	  end
 	  
@@ -526,7 +532,7 @@ module MFSM(
 	  PAGE_READ_CMDL3:begin
 	    toggle_en_o <= 1'b1;
 	    cmd_code_o  <= 3'b000;
-		CAD_sel_o   <= 2'b00;
+		CAD_sel_o   <= 2'b11;
 		if(toggle_done_i)
 		  next_state <= PAGE_READ_WAITL0;
 	  end
@@ -549,7 +555,7 @@ module MFSM(
 	  
 	  PAGE_READ_WAITL2:begin
 	    CE_n       <= 1'b0;
-	    if(R_nB) begin
+	    if(R_nB)
 		  next_state <= PAGE_READ_RPAL0;  
 		else
 		  next_state <= PAGE_READ_WAITL2;
@@ -564,16 +570,18 @@ module MFSM(
 		     flash_read_o    <= 1'b0   ;
 		     flash_write_o   <= 1'b0   ;
 			 ecc_decode_en_o <= 1'b1   ;
+			 ecc_en_o        <= 1'b1   ;
 		   end
 		 else
 		   begin
 		     flash_read_o    <= 1'b1   ;
 		     flash_write_o   <= 1'b0   ;
 			 ecc_decode_en_o <= 1'b0   ;
+			 ecc_en_o        <= 1'b0   ;
 		   end		 		 
-		 if(toggle_done_i && ~ecc_en_o)
+		 if(toggle_done_i && ~ecc_on_i)
 		   next_state <= PAGE_READ_WAITL6; 
-		 else if(toggle_done_i && ecc_en_o)
+		 else if(toggle_done_i && ecc_on_i)
 		   next_state <= PAGE_ECC_DECODE_WAIT1; 
 		 else
 		   next_state <= PAGE_READ_RPAL0;
@@ -598,16 +606,23 @@ module MFSM(
 		  next_state <= PAGE_ECC_DECODE_READ;
 	  end
 	  
-
-	  end
 	  
 	  PAGE_READ_WAITL6:begin
 	    flash_read_o <= 1'b1      ;
 		flash_write_o <=1'b0      ;
-		if(fifo_rdata_cnt_i == (data_field_i+1))
-		  next_state <=PAGE_READ_DONE;
-		else
-		  next_state <=PAGE_READ_WAITL6;
+		if(~ecc_on_i) begin
+		  if(fifo_rdata_cnt_i == (data_field_i+1))
+		    next_state <=PAGE_READ_DONE;
+		  else
+		    next_state <=PAGE_READ_WAITL6;
+		end
+		else if(ecc_on_i)begin
+		  if(fifo_rdata_cnt_i == (12'h784))
+		    next_state <=PAGE_READ_DONE;
+		  else
+		    next_state <=PAGE_READ_WAITL6;
+		end
+		else  next_state <=PAGE_READ_WAITL6;
 	  end
 	  
 	  PAGE_READ_DONE:begin
@@ -615,106 +630,6 @@ module MFSM(
 		next_state <= IDLE;
 	  end
 	  
-	  PAGE_READ_RPAL1:begin
-	    toggle_en_o <= 1'b1;
-	    cmd_code_o  <= 3'b101 ;  //--data read one page , colume start address ---- address[2047]
-	// CAD_sel_o   <= 2'b00  ;  // AHB fifo data to flash
-        ecc_we_o    <= 1'b1   ;  // flash to  ecc
-	    ecc_re_o    <= 1'b1   ;
-	    flash_read_o <= 1'b1   ;  //FALSH DATA TO ECC
-		flash_write_o <= 1'b0 ;
-//	    fifo_en_o   <= 1'b1    ;  //delay 3 cyce for 12 byte data
-		if(toggle_done_i)
-		  next_state <= PAGE_READ_ECCDONE;
-		else
-		  next_state <= PAGE_READ_RPAL1;
-	  end
-	
-	  PAGE_READ_ECCDONE:begin
-	    if(interface_i)
-		  next_state <= PAGE_READ_CMDL4;
-		else
-		  next_state <= PAGE_READ_CMDL0;
-	  end
-	
-
-      PAGE_READ_CMDL4:begin
-	    cmd_en_o   <= 1'b1;
-		cmd_o      <= 8'h05;
-		cmd_code_o <= 3'b000;
-		next_state <= PAGE_READ_CMDL5;
-      end 	  
-	  
-	  PAGE_READ_CMDL5:begin
-	    toggle_en_o <= 1'b1;
-		cmd_code_o  <= 3'b000;
-		if(toggle_done_i)
-		  next_state <= PAGE_READ_ADDRL5;
-		else
-		  next_state <= PAGE_READ_CMDL5;
-	  end
-	  
-	  PAGE_READ_ADDRL5:begin
-	    toggle_en_o <= 1'b1;
-		cmd_code_o  <= 3'b001;
-		CAD_sel_o   <= 2'b10;
-		AMUX_sel_o  <= 3'b000;
-		if(toggle_done_i) begin
-		  if(page_width_i)
-		    next_state <= PAGE_READ_ADDRL6;
-		  else
-		    next_state <= PAGE_READ_CMDL6;
-		  end
-		else
-		  next_state <= PAGE_READ_ADDRL5;
-	  end
-	  
-	  PAGE_READ_ADDRL6:begin
-	    toggle_en_o <= 1'b1;
-		cmd_code_o  <= 3'b001;
-		CAD_sel_o   <= 2'b10;
-		AMUX_sel_o  <= 3'b001;
-		if(toggle_done_i)
-		  next_state <= PAGE_READ_CMDL6;
-		else
-		  next_state <= PAGE_READ_ADDRL6;
-	  end
-	  
-	  PAGE_READ_CMDL6:begin
-	    cmd_o <=8'he0;
-		cmd_en_o <= 1'b1;
-		next_state <= PAGE_READ_CMDL7;
-	  end
-	  
-	  PAGE_READ_CMDL7:begin
-	    cmd_code_o <=3'b000;
-		toggle_en_o <= 1'b1;
-		if(toggle_done_i)
-		  next_state <= PAGE_READ_WAITL3;
-		else
-		  next_state <= PAGE_READ_CMDL7;
-	  end
-	  
-	  PAGE_READ_WAITL3:begin
-//	    acnt_rst_o <= 1'b1;
-		wCnt_rst_o <= 1'b1;
-		next_state <= PAGE_READ_WAITL4;
-	  end
-	  
-	  PAGE_READ_WAITL4:begin
-	    wCnt_en_o  <= 1'b1;
-		if(tCLR_i)
-		  next_state <= PAGE_READ_WAITL5;
-		else
-		  next_state <= PAGE_READ_WAITL4;
-	  end
-	  
-	  PAGE_READ_WAITL5:begin
-	    if(R_nB)
-		  next_state <= PAGE_READ_RPAL0;
-		else
-		  next_state <= PAGE_READ_WAITL5;
-	  end	
 	  
 //	  PAGE_READ_RPAL1:begin
 //	    toggle_en_o <= 1'b1;
@@ -788,7 +703,7 @@ module MFSM(
 	  READ_ID_DR1:begin
 	    toggle_en_o   <= 1'b1   ;
 		cmd_code_o    <= 3'b010 ;  
-		bf_reg_addr_o <= 12'h500; // ID reg address
+		bf_reg_addr_o <= 12'h800; // ID reg address
 		if(toggle_done_i)
 		  next_state <= READ_ID_DR2;
 		else
@@ -798,7 +713,7 @@ module MFSM(
 	  READ_ID_DR2:begin
 	    toggle_en_o   <= 1'b1   ;
 		cmd_code_o    <= 3'b010 ;  
-		bf_reg_addr_o <= 12'h501; // ID reg address
+		bf_reg_addr_o <= 12'h801; // ID reg address
 		if(toggle_done_i)
 		  next_state <= READ_ID_DR3;
 		else
@@ -808,7 +723,7 @@ module MFSM(
 	  READ_ID_DR3:begin
 	    toggle_en_o   <= 1'b1   ;
 		cmd_code_o    <= 3'b010 ; 
-	    bf_reg_addr_o <= 12'h502; // ID reg address		
+	    bf_reg_addr_o <= 12'h802; // ID reg address		
 		if(toggle_done_i)
 		  next_state <= READ_ID_DR4;
 		else
@@ -818,7 +733,7 @@ module MFSM(
 	  READ_ID_DR4:begin
 	    toggle_en_o    <= 1'b1   ; 
 		cmd_code_o     <= 3'b010 ;  
-		bf_reg_addr_o  <= 12'h503; // ID reg address
+		bf_reg_addr_o  <= 12'h803; // ID reg address
 		if(toggle_done_i && command_r[5])
 		  next_state <= READ_ID_DR5;  //6byte
 		else if(toggle_done_i && (~command_r[5]))
@@ -830,7 +745,7 @@ module MFSM(
 	  READ_ID_DR5:begin
 	    toggle_en_o   <= 1'b1;
 		cmd_code_o    <= 3'b010;  
-		bf_reg_addr_o <= 12'h504; // ID reg address
+		bf_reg_addr_o <= 12'h804; // ID reg address
 		if(toggle_done_i)
 		  next_state <= READ_ID_DR6;
 		else
@@ -840,7 +755,7 @@ module MFSM(
 	  READ_ID_DR6:begin
 	    toggle_en_o   <= 1'b1;
 		cmd_code_o    <= 3'b010;
-	    bf_reg_addr_o <= 12'h505; // ID reg address		
+	    bf_reg_addr_o <= 12'h805; // ID reg address		
 		if(toggle_done_i)
 		  next_state <= READ_ID_DONE;
 		else
@@ -927,7 +842,7 @@ module MFSM(
 	  READ_STATE_DR1:begin
 	    toggle_en_o <= 1'b1;
 		cmd_code_o  <= 3'b010;
-		bf_reg_addr_o <= 12'h506; //state reg
+		bf_reg_addr_o <= 12'h806; //state reg
 		if (toggle_done_i)
 		  next_state <= READ_STATE_DONE;
 		else
