@@ -232,6 +232,7 @@ module MFSM(
 	  flash_read_o    <= 1'b0   ;
 	  ecc_decode_en_o <= 1'b0   ;
 	  ecc_encode_en_o <= 1'b0   ;
+	  bf_reg_addr_o   <= 12'h0  ;
       case(current_state)
   	  IDLE:begin
   	    if(MFSM_start_i)
@@ -571,6 +572,7 @@ module MFSM(
 		     flash_write_o   <= 1'b0   ;
 			 ecc_decode_en_o <= 1'b1   ;
 			 ecc_en_o        <= 1'b1   ;
+			 bf_reg_addr_o   <= 12'h807;  // ecc result reg address		
 		   end
 		 else
 		   begin

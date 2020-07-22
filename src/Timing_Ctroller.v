@@ -318,7 +318,11 @@ module Timing_ctrl(
 	           we_fifo_o <= 1'b0;
                ecc_rd_o  <= 1'b0;
 		     end
-	       if(ecc_done_i) next_state <= ECC_DECODE_END;
+	       if(ecc_done_i) begin
+		     next_state <= ECC_DECODE_END;
+			 BF_o       <= 1'b1;
+			 DIS        <= 1'b1;
+			 end
 	       else next_state <= READ_ECC_DECODE;
 		 end
 		 
